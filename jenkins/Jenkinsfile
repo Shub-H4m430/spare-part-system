@@ -103,17 +103,28 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
-                sh '''
-                    set -eu
-                    docker build \\
-                        -f docker/Dockerfile \\
-                        -t "$IMAGE_NAME:$IMAGE_TAG" \\
-                        -t "$IMAGE_NAME:build-$BUILD_NUMBER" \\
-                        .
-                    docker image ls "$IMAGE_NAME"
-                '''
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        set -eu
+                        # Log in to Docker Hub
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        # Build the images with your Docker Hub username prefix
+                        docker build \\
+                            -f docker/Dockerfile \\
+                            -t "${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}" \\
+                            -t "${DOCKER_USER}/${IMAGE_NAME}:build-${BUILD_NUMBER}" \\
+                            .
+
+                        # Push the versioned images to Docker Hub
+                        docker push "${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                        docker push "${DOCKER_USER}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
+
+                        echo "Successfully pushed images to Docker Hub!"
+                    '''
+                }
             }
         }
 
