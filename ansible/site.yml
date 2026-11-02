@@ -1,0 +1,220 @@
+---
+# Prepares and checks a local workspace for the Spare Parts Request System.
+#
+# Run from the project root:
+#   ansible-playbook -i ansible/hosts ansible/site.yml
+#
+# The playbook is idempotent: a second run on a correct workspace reports
+# changed=0. It never needs root, and it only touches files inside the project.
+
+- name: Configure local prerequisites for the Spare Parts Request System
+  hosts: local
+  gather_facts: true
+
+  vars:
+    project_root: "{{ (playbook_dir ~ '/..') | realpath }}"
+    min_python_version: "3.10"
+
+    project_directories:
+      - src
+      - src/templates
+      - docker
+      - docs
+      - jenkins
+      - ansible
+      - tests
+      - tests/selenium
+
+    required_files:
+      - requirements.txt
+      - src/app.py
+      - src/templates/index.html
+      - docker/Dockerfile
+      - docker/docker-compose.yml
+      - jenkins/Jenkinsfile
+      - tests/selenium/test_spare_parts_ui.py
+
+    # Folders whose source files must be readable by everyone but writable only by the owner.
+    source_folders:
+      - src
+      - docs
+      - docker
+      - jenkins
+      - ansible
+      - tests
+
+    source_patterns:
+      - "*.py"
+      - "*.html"
+      - "*.md"
+      - "*.yml"
+      - "*.txt"
+      - Dockerfile
+      - Jenkinsfile
+      - hosts
+
+    # Local data, secrets and generated files that must never be committed.
+    gitignore_entries:
+      - ".venv/"
+      - "venv/"
+      - "__pycache__/"
+      - ".pytest_cache/"
+      - "src/data.json"
+      - "src/data.json.corrupt-*"
+      - "src/.data-*.tmp"
+      - "docker/.env"
+      - "ci-data/"
+      - "tests/selenium/artifacts/"
+
+  tasks:
+    # ------------------------------------------------------------ directories
+    - name: Ensure project directories exist and are not group or world writable
+      ansible.builtin.file:
+        path: "{{ project_root }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ project_directories }}"
+
+    - name: Check that the required project files are present
+      ansible.builtin.stat:
+        path: "{{ project_root }}/{{ item }}"
+      loop: "{{ required_files }}"
+      register: required_file_stats
+
+    - name: Fail if any required project file is missing
+      ansible.builtin.assert:
+        that:
+          - missing_files | length == 0
+        fail_msg: "Missing required files: {{ missing_files | join(', ') }}"
+        success_msg: "All {{ required_files | length }} required project files are present."
+        quiet: true
+      vars:
+        missing_files: >-
+          {{ required_file_stats.results
+             | rejectattr('stat.exists')
+             | map(attribute='item')
+             | list }}
+
+    # ---------------------------------------------------------------- python
+    - name: Check the installed Python 3 version
+      ansible.builtin.command: python3 --version
+      register: python_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if Python 3 is missing or older than {{ min_python_version }}
+      ansible.builtin.assert:
+        that:
+          - python_version_check.rc == 0
+          - detected_python_version is version(min_python_version, '>=')
+        fail_msg: >-
+          Python {{ min_python_version }} or newer is required.
+          Found: {{ (python_version_check.stdout ~ python_version_check.stderr) | default('nothing', true) }}
+        success_msg: "Python {{ detected_python_version }} is installed."
+        quiet: true
+      vars:
+        detected_python_version: >-
+          {{ (python_version_check.stdout ~ ' ' ~ python_version_check.stderr)
+             | regex_search('\d+\.\d+(\.\d+)?') | default('0.0', true) }}
+
+    - name: Check that the Python venv module is available
+      ansible.builtin.command: python3 -m venv --help
+      register: venv_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check that pip is available
+      ansible.builtin.command: python3 -m pip --version
+      register: pip_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if venv or pip is missing
+      ansible.builtin.assert:
+        that:
+          - venv_check.rc == 0
+          - pip_check.rc == 0
+        fail_msg: >-
+          venv available: {{ venv_check.rc == 0 }}, pip available: {{ pip_check.rc == 0 }}.
+          On Debian or Ubuntu install them with: sudo apt install python3-venv python3-pip
+        success_msg: "venv and pip are available."
+        quiet: true
+
+    # ------------------------------------------------- optional tooling (warn only)
+    - name: Check for optional DevOps tools
+      ansible.builtin.command: "{{ item.command }}"
+      loop:
+        - { name: "Docker", command: "docker --version" }
+        - { name: "Docker Compose v2", command: "docker compose version" }
+        - { name: "Git", command: "git --version" }
+      loop_control:
+        label: "{{ item.name }}"
+      register: optional_tool_checks
+      changed_when: false
+      failed_when: false
+
+    # ----------------------------------------------------------- permissions
+    - name: Find project source files
+      ansible.builtin.find:
+        paths: "{{ source_folders | map('regex_replace', '^', project_root ~ '/') | list }}"
+        patterns: "{{ source_patterns }}"
+        recurse: true
+        excludes:
+          - "__pycache__"
+      register: project_source_files
+
+    - name: Make source files owner-writable and read-only for everyone else
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "0644"
+      loop: "{{ project_source_files.files }}"
+      loop_control:
+        label: "{{ item.path | relpath(project_root) }}"
+
+    - name: Find local data files that contain staff names
+      ansible.builtin.find:
+        paths: "{{ project_root }}/src"
+        patterns:
+          - "data.json"
+          - "data.json.corrupt-*"
+      register: local_data_files
+
+    - name: Restrict local data files to the owner only
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "0600"
+      loop: "{{ local_data_files.files }}"
+      loop_control:
+        label: "{{ item.path | relpath(project_root) }}"
+
+    - name: Check for a Docker Compose secrets file
+      ansible.builtin.stat:
+        path: "{{ project_root }}/docker/.env"
+      register: compose_env_file
+
+    - name: Restrict the Docker Compose secrets file to the owner only
+      ansible.builtin.file:
+        path: "{{ project_root }}/docker/.env"
+        mode: "0600"
+      when: compose_env_file.stat.exists
+
+    # ------------------------------------------------------------ version control
+    - name: Keep local data, secrets and build output out of Git
+      ansible.builtin.lineinfile:
+        path: "{{ project_root }}/.gitignore"
+        line: "{{ item }}"
+        create: true
+        mode: "0644"
+      loop: "{{ gitignore_entries }}"
+
+    # ---------------------------------------------------------------- summary
+    - name: Workspace summary
+      ansible.builtin.debug:
+        msg:
+          - "Project root: {{ project_root }}"
+          - "Python: {{ python_version_check.stdout | default(python_version_check.stderr) }}"
+          - "Source files checked: {{ project_source_files.matched }}"
+          - "Local data files secured: {{ local_data_files.matched }}"
+          - >-
+            Optional tools:
+            {% for check in optional_tool_checks.results %}{{ check.item.name }}={{ 'found' if check.rc == 0 else 'MISSING' }}{{ ', ' if not loop.last else '' }}{% endfor %}

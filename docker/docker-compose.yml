@@ -1,0 +1,50 @@
+# Spare Parts Request System - Docker Compose
+#
+# First-time setup (run from the project root):
+#   1. Create docker/.env with a random session secret (keep this file out of Git):
+#        python -c "import secrets; print('SPRS_SECRET_KEY=' + secrets.token_hex(32))" > docker/.env
+#   2. Build and start:
+#        docker compose -f docker/docker-compose.yml up -d --build
+#   3. Open http://localhost:5000
+#
+# Useful commands:
+#   docker compose -f docker/docker-compose.yml logs -f        # follow logs
+#   docker compose -f docker/docker-compose.yml down           # stop (data is kept)
+#   docker compose -f docker/docker-compose.yml down -v        # stop AND delete all data
+#
+# Demo mode (one-click sign-in) is off unless you add SPRS_DEMO_MODE=1 to docker/.env.
+
+name: spare-parts
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.10-slim}
+    image: spare-parts-app:v1
+    container_name: spare-parts-app
+    ports:
+      - "5000:5000"
+    environment:
+      SPRS_SECRET_KEY: ${SPRS_SECRET_KEY:?SPRS_SECRET_KEY is not set. Create docker/.env as described at the top of docker-compose.yml}
+      SPRS_DEMO_MODE: ${SPRS_DEMO_MODE:-0}
+      SPRS_DATA_FILE: /data/data.json
+    volumes:
+      # A named volume holding the whole /data directory, so data.json survives
+      # restarts, rebuilds and "docker compose down". Only "down -v" removes it.
+      - sprs-data:/data
+    restart: unless-stopped
+    # Hardening: read-only root filesystem, no privilege escalation, no Linux capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  sprs-data:
+    name: spare-parts-data

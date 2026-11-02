@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+src/data.json
+src/data.json.corrupt-*
+src/.data-*.tmp
+docker/.env
+ci-data/
+tests/selenium/artifacts/

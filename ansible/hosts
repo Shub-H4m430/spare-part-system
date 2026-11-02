@@ -1,0 +1,8 @@
+# Ansible inventory for the Spare Parts Request System workspace.
+# Targets this machine only, without SSH.
+#
+# Run from the project root:
+#   ansible-playbook -i ansible/hosts ansible/site.yml
+
+[local]
+localhost ansible_connection=local ansible_python_interpreter="{{ ansible_playbook_python }}"

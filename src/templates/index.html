@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if view == 'login' %}Sign In{% elif view == 'dashboard' %}Dashboard{% elif view == 'submit' %}New Request{% elif view == 'review' %}Review {{ req.id }}{% elif view == 'status' %}Status {{ req.id }}{% else %}Error{% endif %} · SPRS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy-900: #0f1b2b;
+      --navy-800: #16263a;
+      --navy-700: #1f344d;
+      --slate-50:  #f3f5f7;
+      --slate-100: #e8ecf0;
+      --slate-200: #d5dce3;
+      --slate-300: #b7c1cc;
+      --slate-500: #6b7a8a;
+      --slate-700: #3a4756;
+      --slate-900: #1b232c;
+      --orange:     #e8700a;
+      --orange-dk:  #c25c04;
+      --orange-bg:  #fdf1e6;
+      --st-pending:   #b7791f;
+      --st-pending-bg:#fdf6e3;
+      --st-valid:     #2b6cb0;
+      --st-valid-bg:  #e8f0fa;
+      --st-approved:  #2f7d4f;
+      --st-approved-bg:#e7f4ec;
+      --st-rejected:  #b83232;
+      --st-rejected-bg:#fbeaea;
+      --radius: 3px;
+    }
+    html, body { background: var(--slate-50); }
+    body {
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      color: var(--slate-900);
+      font-size: 0.9rem;
+    }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+    /* ---------- top bar ---------- */
+    .sprs-topbar { background: var(--navy-900); border-bottom: 3px solid var(--orange); }
+    .sprs-topbar .navbar-brand {
+      color: #fff; font-weight: 700; letter-spacing: .04em; font-size: 1rem;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .brand-mark {
+      width: 30px; height: 30px; background: var(--orange); color: var(--navy-900);
+      display: grid; place-items: center; border-radius: var(--radius); font-size: 1rem;
+    }
+    .brand-sub { color: var(--slate-300); font-weight: 400; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
+    .sprs-topbar .nav-link { color: var(--slate-300); font-weight: 500; padding: .9rem 1rem !important; border-bottom: 3px solid transparent; margin-bottom: -3px; }
+    .sprs-topbar .nav-link:hover { color: #fff; }
+    .sprs-topbar .nav-link.active { color: #fff; border-bottom-color: #fff; }
+    .sprs-topbar .navbar-toggler { border-color: var(--slate-500); }
+    .sprs-topbar .navbar-toggler-icon { filter: invert(1); }
+    .user-chip { display: inline-flex; align-items: center; gap: .45rem; color: #fff; font-size: .82rem; font-weight: 500; }
+    .user-chip .bi { color: var(--slate-300); font-size: 1rem; }
+    .role-tag { font-family: "IBM Plex Mono", monospace; font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .4rem; border-radius: var(--radius); font-weight: 600; }
+    .role-worker  { background: var(--navy-700); color: var(--slate-100); border: 1px solid var(--slate-500); }
+    .role-manager { background: var(--orange); color: var(--navy-900); }
+    .btn-logout { color: var(--slate-300); border: 1px solid var(--navy-700); background: transparent; }
+    .btn-logout:hover { color: #fff; border-color: var(--slate-500); background: var(--navy-800); }
+    .requester-lock { background: var(--slate-50); border: 1px dashed var(--slate-300); border-radius: var(--radius); padding: .45rem .75rem; font-weight: 500; }
+    .requester-lock .bi { color: var(--slate-500); }
+    .demo-flag { font-family: "IBM Plex Mono", monospace; font-size: .65rem; font-weight: 600; letter-spacing: .1em; color: var(--navy-900); background: repeating-linear-gradient(-45deg, #f2b705 0 8px, #e0a800 8px 16px); padding: .2rem .5rem; border-radius: var(--radius); }
+    .demo-box { border: 1px dashed var(--slate-300); border-radius: var(--radius); padding: .75rem; background: var(--slate-50); }
+    .demo-head { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--slate-700); margin-bottom: .6rem; }
+    .demo-head .bi { color: var(--orange); }
+    .demo-btn { display: flex; align-items: center; gap: .6rem; background: #fff; border: 1px solid var(--slate-300); text-align: left; padding: .5rem .75rem; }
+    .demo-btn:hover { border-color: var(--orange); background: var(--orange-bg); }
+    .login-wrap { min-height: calc(100vh - 180px); display: grid; place-items: center; padding: 2.5rem 16px; }
+    .login-card { width: 100%; max-width: 400px; border-top: 3px solid var(--orange); }
+    .login-head { padding: 1.1rem 1rem .9rem; border-bottom: 1px solid var(--slate-200); }
+    .plant-chip { color: var(--slate-300); font-size: .75rem; border: 1px solid var(--navy-700); padding: .25rem .6rem; border-radius: var(--radius); }
+
+    /* ---------- page header ---------- */
+    .page-head { background: #fff; border-bottom: 1px solid var(--slate-200); padding: 1.1rem 0; }
+    .page-head h1 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+    .crumbs { font-size: .75rem; color: var(--slate-500); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .2rem; }
+    .crumbs a { color: var(--slate-500); text-decoration: none; }
+    .crumbs a:hover { color: var(--orange-dk); }
+
+    /* ---------- buttons ---------- */
+    .btn { border-radius: var(--radius); font-weight: 500; }
+    .btn-accent { background: var(--orange); border-color: var(--orange); color: #fff; }
+    .btn-accent:hover, .btn-accent:focus { background: var(--orange-dk); border-color: var(--orange-dk); color: #fff; }
+    .btn-navy { background: var(--navy-800); border-color: var(--navy-800); color: #fff; }
+    .btn-navy:hover { background: var(--navy-900); color: #fff; }
+    .btn-outline-slate { border-color: var(--slate-300); color: var(--slate-700); background: #fff; }
+    .btn-outline-slate:hover { background: var(--slate-100); color: var(--slate-900); }
+
+    /* ---------- panels ---------- */
+    .panel { background: #fff; border: 1px solid var(--slate-200); border-radius: var(--radius); }
+    .panel-head {
+      padding: .7rem 1rem; border-bottom: 1px solid var(--slate-200);
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--slate-700);
+    }
+    .panel-body { padding: 1rem; }
+
+    /* ---------- KPI strip ---------- */
+    .kpi { background: #fff; border: 1px solid var(--slate-200); border-left: 4px solid var(--slate-300); border-radius: var(--radius); padding: .8rem 1rem; height: 100%; text-decoration: none; display: block; color: inherit; }
+    .kpi:hover { border-color: var(--slate-300); background: #fcfdfd; color: inherit; }
+    .kpi .k-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--slate-500); font-weight: 600; }
+    .kpi .k-value { font-family: "IBM Plex Mono", monospace; font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+    .kpi.k-total    { border-left-color: var(--navy-700); }
+    .kpi.k-pending  { border-left-color: var(--st-pending); }
+    .kpi.k-valid    { border-left-color: var(--st-valid); }
+    .kpi.k-approved { border-left-color: var(--st-approved); }
+    .kpi.k-rejected { border-left-color: var(--st-rejected); }
+    .kpi.k-critical { border-left-color: var(--orange); background: var(--orange-bg); }
+    .kpi.k-critical .k-value { color: var(--orange-dk); }
+
+    /* ---------- table ---------- */
+    .table-sprs { margin: 0; font-size: .85rem; }
+    .table-sprs thead th {
+      background: var(--slate-100); color: var(--slate-700); font-size: .7rem; text-transform: uppercase;
+      letter-spacing: .06em; font-weight: 600; border-bottom: 1px solid var(--slate-200); white-space: nowrap; padding: .6rem .75rem;
+    }
+    .table-sprs td { vertical-align: middle; padding: .6rem .75rem; border-color: var(--slate-100); }
+    .table-sprs tbody tr:hover { background: #fafbfc; }
+    .table-sprs .req-id { font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--navy-700); text-decoration: none; }
+    .table-sprs .req-id:hover { color: var(--orange-dk); text-decoration: underline; }
+    .table-sprs td.mono, .table-sprs .req-id, .table-sprs .sub.mono { white-space: nowrap; }
+    .table-sprs td.col-part { min-width: 200px; }
+    .sub { color: var(--slate-500); font-size: .75rem; }
+
+    /* ---------- badges ---------- */
+    .st-badge {
+      display: inline-flex; align-items: center; gap: .35rem; font-size: .72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em; padding: .25rem .55rem; border-radius: var(--radius);
+      border: 1px solid currentColor; white-space: nowrap;
+    }
+    .st-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .st-Pending   { color: var(--st-pending);  background: var(--st-pending-bg); }
+    .st-Validated { color: var(--st-valid);    background: var(--st-valid-bg); }
+    .st-Approved  { color: var(--st-approved); background: var(--st-approved-bg); }
+    .st-Rejected  { color: var(--st-rejected); background: var(--st-rejected-bg); }
+
+    .urg { display: inline-flex; align-items: center; gap: .45rem; font-weight: 500; white-space: nowrap; }
+    .urg-bars { display: inline-flex; gap: 2px; align-items: flex-end; }
+    .urg-bars i { display: block; width: 4px; background: var(--slate-200); }
+    .urg-bars i:nth-child(1) { height: 6px; } .urg-bars i:nth-child(2) { height: 9px; }
+    .urg-bars i:nth-child(3) { height: 12px; } .urg-bars i:nth-child(4) { height: 15px; }
+    .urg-Low      .urg-bars i:nth-child(-n+1) { background: var(--slate-500); }
+    .urg-Medium   .urg-bars i:nth-child(-n+2) { background: var(--st-valid); }
+    .urg-High     .urg-bars i:nth-child(-n+3) { background: var(--st-pending); }
+    .urg-Critical .urg-bars i                 { background: var(--st-rejected); }
+    .urg-Critical { color: var(--st-rejected); font-weight: 600; }
+
+    /* ---------- forms ---------- */
+    .form-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--slate-700); margin-bottom: .3rem; }
+    .form-control, .form-select { border-radius: var(--radius); border-color: var(--slate-300); font-size: .9rem; }
+    .form-control:focus, .form-select:focus { border-color: var(--orange); box-shadow: 0 0 0 .2rem rgba(232,112,10,.18); }
+    .req-star { color: var(--orange-dk); }
+    .form-text { font-size: .75rem; color: var(--slate-500); }
+    .urgency-picker .btn-check + label { border: 1px solid var(--slate-300); background: #fff; color: var(--slate-700); width: 100%; font-size: .8rem; }
+    .urgency-picker .btn-check:checked + label { background: var(--navy-800); border-color: var(--navy-800); color: #fff; }
+    .urgency-picker .btn-check:checked + label.u-Critical { background: var(--st-rejected); border-color: var(--st-rejected); }
+    .urgency-picker.is-invalid label { border-color: var(--bs-danger); }
+
+    /* ---------- modal ---------- */
+    .modal-content { border-radius: var(--radius); border: 0; }
+    .modal-header { background: var(--navy-900); color: #fff; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 3px solid var(--orange); }
+    .modal-header .btn-close { filter: invert(1); }
+    .modal-title { font-size: 1rem; font-weight: 600; }
+
+    /* ---------- details ---------- */
+    .spec { margin: 0; }
+    .spec dt { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--slate-500); font-weight: 600; }
+    .spec dd { margin-bottom: .85rem; font-weight: 500; }
+    .justification { background: var(--slate-50); border: 1px solid var(--slate-200); border-left: 3px solid var(--slate-300); padding: .75rem; border-radius: var(--radius); white-space: pre-wrap; }
+
+    .check-row { display: flex; gap: .75rem; padding: .6rem 0; border-bottom: 1px dashed var(--slate-200); }
+    .check-row:last-child { border-bottom: 0; }
+    .chk { font-family: "IBM Plex Mono", monospace; font-size: .7rem; font-weight: 600; padding: .1rem .4rem; border-radius: var(--radius); height: fit-content; min-width: 44px; text-align: center; }
+    .chk-PASS { background: var(--st-approved-bg); color: var(--st-approved); }
+    .chk-WARN { background: var(--st-pending-bg); color: var(--st-pending); }
+    .chk-FAIL { background: var(--st-rejected-bg); color: var(--st-rejected); }
+
+    /* ---------- lifecycle stepper ---------- */
+    .stepper { display: flex; margin: 0; padding: 0; list-style: none; }
+    .stepper li { flex: 1; text-align: center; position: relative; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--slate-500); }
+    .stepper li::before { content: ""; position: absolute; top: 14px; left: -50%; width: 100%; height: 3px; background: var(--slate-200); z-index: 0; }
+    .stepper li:first-child::before { display: none; }
+    .stepper .dot { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 3px solid var(--slate-200); display: grid; place-items: center; margin: 0 auto .4rem; position: relative; z-index: 1; color: var(--slate-300); font-size: .85rem; }
+    .stepper li.done { color: var(--slate-900); }
+    .stepper li.done::before { background: var(--navy-700); }
+    .stepper li.done .dot { background: var(--navy-700); border-color: var(--navy-700); color: #fff; }
+    .stepper li.current .dot { border-color: var(--orange); background: var(--orange); color: #fff; }
+    .stepper li.current { color: var(--orange-dk); }
+    .stepper li.rejected .dot { background: var(--st-rejected); border-color: var(--st-rejected); color: #fff; }
+    .stepper li.rejected { color: var(--st-rejected); }
+
+    /* ---------- timeline ---------- */
+    .timeline { list-style: none; margin: 0; padding: 0 0 0 1.25rem; border-left: 2px solid var(--slate-200); }
+    .timeline li { position: relative; padding: 0 0 1.2rem 1rem; }
+    .timeline li:last-child { padding-bottom: 0; }
+    .timeline li::before { content: ""; position: absolute; left: -1.25rem; top: .3rem; width: 12px; height: 12px; margin-left: -7px; border-radius: 50%; background: #fff; border: 3px solid var(--slate-500); }
+    .timeline li.tl-Pending::before   { border-color: var(--st-pending); }
+    .timeline li.tl-Validated::before { border-color: var(--st-valid); }
+    .timeline li.tl-Approved::before  { border-color: var(--st-approved); background: var(--st-approved); }
+    .timeline li.tl-Rejected::before  { border-color: var(--st-rejected); background: var(--st-rejected); }
+    .tl-time { font-family: "IBM Plex Mono", monospace; font-size: .75rem; color: var(--slate-500); }
+
+    .alert { border-radius: var(--radius); border-left-width: 4px; font-size: .875rem; }
+    .empty-state { padding: 3rem 1rem; text-align: center; color: var(--slate-500); }
+    .empty-state i { font-size: 2rem; display: block; margin-bottom: .5rem; color: var(--slate-300); }
+    footer.sprs-foot { color: var(--slate-500); font-size: .75rem; border-top: 1px solid var(--slate-200); padding: 1rem 0; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+
+{# ======================= MACROS ======================= #}
+{% macro status_badge(s) -%}
+  <span class="st-badge st-{{ s }}" data-status="{{ s }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro urgency_tag(u) -%}
+  <span class="urg urg-{{ u }}"><span class="urg-bars"><i></i><i></i><i></i><i></i></span>{{ u }}</span>
+{%- endmacro %}
+
+{% macro field_error(name) -%}
+  {% if errors and errors.get(name) %}<div class="invalid-feedback d-block" data-error-for="{{ name }}">{{ errors[name] }}</div>{% endif %}
+{%- endmacro %}
+
+{% macro request_form(form, errors, id_prefix) -%}
+  <div class="row g-3">
+    <div class="col-md-7">
+      <label class="form-label" for="{{ id_prefix }}part_name">Part Name <span class="req-star">*</span></label>
+      <input type="text" class="form-control {% if errors.get('part_name') %}is-invalid{% endif %}" id="{{ id_prefix }}part_name" name="part_name" value="{{ form.get('part_name', '') }}" minlength="3" maxlength="100" required placeholder="e.g. Deep Groove Ball Bearing 6205-2RS">
+      {{ field_error('part_name') }}
+    </div>
+    <div class="col-md-5">
+      <label class="form-label" for="{{ id_prefix }}part_number">Part Number <span class="req-star">*</span></label>
+      <input type="text" class="form-control mono text-uppercase {% if errors.get('part_number') %}is-invalid{% endif %}" id="{{ id_prefix }}part_number" name="part_number" value="{{ form.get('part_number', '') }}" maxlength="30" required placeholder="SKF-6205-2RS">
+      {{ field_error('part_number') }}
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="{{ id_prefix }}quantity">Quantity <span class="req-star">*</span></label>
+      <input type="number" class="form-control mono {% if errors.get('quantity') %}is-invalid{% endif %}" id="{{ id_prefix }}quantity" name="quantity" value="{{ form.get('quantity_raw', form.get('quantity', '')) }}" min="1" max="10000" step="1" required>
+      {{ field_error('quantity') }}
+    </div>
+    <div class="col-md-8">
+      <label class="form-label" for="{{ id_prefix }}asset_id">Machine / Asset ID <span class="req-star">*</span></label>
+      <input type="text" class="form-control mono text-uppercase {% if errors.get('asset_id') %}is-invalid{% endif %}" id="{{ id_prefix }}asset_id" name="asset_id" value="{{ form.get('asset_id', '') }}" maxlength="20" required placeholder="CNC-LATHE-04">
+      {{ field_error('asset_id') }}
+    </div>
+    <div class="col-12">
+      <span class="form-label d-block">Urgency Level <span class="req-star">*</span></span>
+      <div class="row g-2 urgency-picker {% if errors.get('urgency') %}is-invalid{% endif %}">
+        {% for u in urgency_levels %}
+        <div class="col-6 col-md-3">
+          <input type="radio" class="btn-check" name="urgency" id="{{ id_prefix }}urg_{{ u }}" value="{{ u }}" autocomplete="off" required {% if form.get('urgency') == u or (not form.get('urgency') and u == 'Medium') %}checked{% endif %}>
+          <label class="btn u-{{ u }}" for="{{ id_prefix }}urg_{{ u }}">{{ u }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      {{ field_error('urgency') }}
+    </div>
+    <div class="col-12">
+      <span class="form-label d-block">Requester</span>
+      <div class="requester-lock" id="{{ id_prefix }}requester-display"><i class="bi bi-lock-fill me-1"></i>{{ current_user.name }} <span class="sub mono ms-1">@{{ current_user.username }}</span></div>
+      <div class="form-text">Taken from your sign-in. Requests are always recorded against the logged-in worker.</div>
+    </div>
+    <div class="col-12">
+      <label class="form-label" for="{{ id_prefix }}justification">Justification <span class="req-star">*</span></label>
+      <textarea class="form-control {% if errors.get('justification') %}is-invalid{% endif %}" id="{{ id_prefix }}justification" name="justification" rows="4" minlength="20" maxlength="1000" required placeholder="Failure mode, downtime impact, and why stock replenishment is needed.">{{ form.get('justification', '') }}</textarea>
+      <div class="form-text">20 to 1000 characters. Critical requests need at least 50 characters to pass validation.</div>
+      {{ field_error('justification') }}
+    </div>
+  </div>
+{%- endmacro %}
+
+{# ======================= NAVBAR ======================= #}
+<nav class="navbar navbar-expand-md sprs-topbar py-0">
+  <div class="container-xl">
+    <a class="navbar-brand py-2" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark"><i class="bi bi-gear-wide-connected"></i></span>
+      <span>SPRS<br><span class="brand-sub">Spare Parts Request System</span></span>
+    </a>
+    {% if current_user %}
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto">
+        {% if current_user.role == ROLE_WORKER %}
+          <li class="nav-item"><a class="nav-link {% if view == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-grid-3x3-gap me-1"></i>My Requests</a></li>
+          <li class="nav-item"><a class="nav-link {% if view == 'submit' %}active{% endif %}" href="{{ url_for('submit') }}" id="nav-submit"><i class="bi bi-plus-square me-1"></i>New Request</a></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link {% if view == 'dashboard' and not filters.status %}active{% endif %}" href="{{ url_for('dashboard') }}"><i class="bi bi-grid-3x3-gap me-1"></i>All Requests</a></li>
+          <li class="nav-item"><a class="nav-link {% if view == 'dashboard' and filters.status == 'Pending' %}active{% endif %}" href="{{ url_for('dashboard', status='Pending') }}" id="nav-to-validate"><i class="bi bi-shield-check me-1"></i>To Validate</a></li>
+          <li class="nav-item"><a class="nav-link {% if view == 'dashboard' and filters.status == 'Validated' %}active{% endif %}" href="{{ url_for('dashboard', status='Validated') }}" id="nav-awaiting"><i class="bi bi-clipboard-check me-1"></i>Awaiting Approval</a></li>
+        {% endif %}
+      </ul>
+      <div class="d-flex align-items-center gap-2 py-2 py-md-0">
+        {% if demo_mode %}<span class="demo-flag" id="demo-flag" title="One-click sign-in is enabled">DEMO MODE</span>{% endif %}
+        <span class="user-chip" id="user-chip">
+          <i class="bi bi-person-circle"></i>
+          <span>{{ current_user.name }}</span>
+          <span class="role-tag role-{{ current_user.role }}" data-role="{{ current_user.role }}">{{ current_user.role }}</span>
+        </span>
+        <form method="post" action="{{ url_for('logout') }}" class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-sm btn-logout" id="btn-logout"><i class="bi bi-box-arrow-right me-1"></i>Sign out</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+      <span class="d-flex align-items-center gap-2">
+        {% if demo_mode %}<span class="demo-flag">DEMO MODE</span>{% endif %}
+        <span class="plant-chip mono"><i class="bi bi-building me-1"></i>MAINT · PLANT-01</span>
+      </span>
+    {% endif %}
+  </div>
+</nav>
+
+{% if view == 'login' %}
+{# ======================= LOGIN ======================= #}
+<main class="login-wrap">
+  <div class="login-card panel">
+    <div class="login-head">
+      <div class="crumbs mb-1">Maintenance · Stores</div>
+      <h1 class="h5 mb-0 fw-semibold">Sign in to SPRS</h1>
+    </div>
+    <div class="panel-body">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} py-2" role="alert" data-flash="{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      <form method="post" action="{{ url_for('login') }}" id="login-form" autocomplete="on">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <div class="mb-3">
+          <label class="form-label" for="username">Username</label>
+          <input type="text" class="form-control" id="username" name="username" value="{{ username }}" autocomplete="username" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" class="form-control" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-accent w-100" id="btn-login"><i class="bi bi-box-arrow-in-right me-1"></i>Sign in</button>
+      </form>
+      {% if demo_mode and demo_accounts %}
+      <div class="demo-box mt-4" id="demo-login">
+        <div class="demo-head"><i class="bi bi-lightning-charge-fill me-1"></i>Demo quick sign-in</div>
+        <div class="d-grid gap-2">
+          {% for acct in demo_accounts %}
+          <form method="post" action="{{ url_for('demo_login') }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <input type="hidden" name="username" value="{{ acct.username }}">
+            <button type="submit" class="btn demo-btn w-100" id="btn-demo-{{ acct.role }}">
+              <span class="role-tag role-{{ acct.role }}">{{ acct.role }}</span>
+              <span class="fw-medium">{{ acct.name }}</span>
+              <span class="sub mono ms-auto">@{{ acct.username }}</span>
+            </button>
+          </form>
+          {% endfor %}
+        </div>
+        <p class="sub mb-0 mt-2">Tip: open the worker on <span class="mono">localhost</span> and the manager on <span class="mono">127.0.0.1</span> so both stay signed in side by side.</p>
+      </div>
+      {% endif %}
+      <p class="sub mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>Workers raise and track their own requests. Managers validate and decide. Contact the maintenance office for an account.</p>
+    </div>
+  </div>
+</main>
+{% else %}
+
+{# ======================= PAGE HEADER ======================= #}
+<header class="page-head">
+  <div class="container-xl d-flex flex-wrap justify-content-between align-items-end gap-2">
+    <div>
+      <div class="crumbs">
+        <a href="{{ url_for('dashboard') }}">Maintenance</a> /
+        {% if view == 'dashboard' %}Requests
+        {% elif view == 'submit' %}<a href="{{ url_for('dashboard') }}">Requests</a> / New
+        {% elif view in ('review', 'status') %}<a href="{{ url_for('dashboard') }}">Requests</a> / <span class="mono">{{ req.id }}</span>
+        {% else %}Error{% endif %}
+      </div>
+      <h1>
+        {% if view == 'dashboard' %}{% if current_user.role == ROLE_WORKER %}My Spare Parts Requests{% else %}Spare Parts Requests{% endif %}
+        {% elif view == 'submit' %}Raise Spare Part Request
+        {% elif view == 'review' %}Review Request <span class="mono">{{ req.id }}</span>
+        {% elif view == 'status' %}Request Tracking <span class="mono">{{ req.id }}</span>
+        {% else %}Error {{ error_code }}{% endif %}
+      </h1>
+    </div>
+    <div class="d-flex gap-2">
+      {% if view == 'dashboard' and current_user.role == ROLE_WORKER %}
+        <button type="button" class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#submitModal" id="btn-open-submit"><i class="bi bi-plus-lg me-1"></i>New Request</button>
+      {% elif view == 'review' %}
+        <a href="{{ url_for('status', request_id=req.id) }}" class="btn btn-outline-slate"><i class="bi bi-clock-history me-1"></i>Tracking</a>
+      {% elif view == 'status' and current_user.role == ROLE_MANAGER %}
+        <a href="{{ url_for('review', request_id=req.id) }}" class="btn btn-navy" id="btn-goto-review"><i class="bi bi-clipboard-check me-1"></i>Open Review</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+<main class="container-xl py-4">
+
+  {# ---------------- flash messages ---------------- #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert" data-flash="{{ category }}">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# =================================================================== #}
+  {#                              DASHBOARD                              #}
+  {# =================================================================== #}
+  {% if view == 'dashboard' %}
+
+  {% set is_manager = current_user.role == ROLE_MANAGER %}
+  {% if is_manager %}
+  <div class="row g-3 mb-4" id="kpi-strip" data-scope="all">
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-total" href="{{ url_for('dashboard') }}"><div class="k-label">All Requests</div><div class="k-value" id="kpi-total">{{ summary.Total }}</div></a></div>
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-pending" href="{{ url_for('dashboard', status='Pending') }}"><div class="k-label">To Validate</div><div class="k-value" id="kpi-pending">{{ summary.Pending }}</div></a></div>
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-valid" href="{{ url_for('dashboard', status='Validated') }}"><div class="k-label">Awaiting Decision</div><div class="k-value" id="kpi-validated">{{ summary.Validated }}</div></a></div>
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-approved" href="{{ url_for('dashboard', status='Approved') }}"><div class="k-label">Approved</div><div class="k-value" id="kpi-approved">{{ summary.Approved }}</div></a></div>
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-rejected" href="{{ url_for('dashboard', status='Rejected') }}"><div class="k-label">Rejected</div><div class="k-value" id="kpi-rejected">{{ summary.Rejected }}</div></a></div>
+    <div class="col-6 col-md-4 col-xl-2"><a class="kpi k-critical" href="{{ url_for('dashboard', urgency='Critical') }}"><div class="k-label"><i class="bi bi-exclamation-triangle-fill me-1"></i>Critical Open</div><div class="k-value" id="kpi-critical">{{ summary.CriticalOpen }}</div></a></div>
+  </div>
+  {% else %}
+  {% set my_open = summary.Pending + summary.Validated %}
+  <div class="row g-3 mb-4" id="kpi-strip" data-scope="own">
+    <div class="col-6 col-md-3"><a class="kpi k-total" href="{{ url_for('dashboard') }}"><div class="k-label">My Requests</div><div class="k-value" id="kpi-total">{{ summary.Total }}</div></a></div>
+    <div class="col-6 col-md-3"><a class="kpi k-pending" href="{{ url_for('dashboard', status='Open') }}"><div class="k-label">In Progress</div><div class="k-value" id="kpi-open">{{ my_open }}</div></a></div>
+    <div class="col-6 col-md-3"><a class="kpi k-approved" href="{{ url_for('dashboard', status='Approved') }}"><div class="k-label">Approved</div><div class="k-value" id="kpi-approved">{{ summary.Approved }}</div></a></div>
+    <div class="col-6 col-md-3"><a class="kpi k-rejected" href="{{ url_for('dashboard', status='Rejected') }}"><div class="k-label">Rejected</div><div class="k-value" id="kpi-rejected">{{ summary.Rejected }}</div></a></div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-head">
+      <span><i class="bi bi-list-ul me-1"></i>Request Register</span>
+      <span class="sub text-transform-none" style="text-transform:none;letter-spacing:0;font-weight:400">{{ requests|length }} shown · open items first, by urgency</span>
+    </div>
+    <form class="panel-body border-bottom row g-2 align-items-end" method="get" action="{{ url_for('dashboard') }}" id="filter-form">
+      <div class="col-md-5">
+        <label class="form-label" for="f-q">Search</label>
+        <input type="search" class="form-control" id="f-q" name="q" value="{{ filters.q }}" placeholder="{% if is_manager %}ID, part, part no., asset, requester{% else %}ID, part, part no., asset{% endif %}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label" for="f-status">Status</label>
+        <select class="form-select" id="f-status" name="status">
+          <option value="">All statuses</option>
+          <option value="Open" {% if filters.status == 'Open' %}selected{% endif %}>Open (Pending + Validated)</option>
+          {% for s in statuses %}<option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="f-urgency">Urgency</label>
+        <select class="form-select" id="f-urgency" name="urgency">
+          <option value="">All</option>
+          {% for u in urgency_levels %}<option value="{{ u }}" {% if filters.urgency == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-navy flex-fill"><i class="bi bi-funnel me-1"></i>Apply</button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-slate" title="Clear filters" aria-label="Clear filters"><i class="bi bi-x-lg"></i></a>
+      </div>
+    </form>
+
+    {% if requests %}
+    <div class="table-responsive">
+      <table class="table table-sprs" id="requests-table">
+        <thead>
+          <tr>
+            <th>Request</th>
+            <th>Part</th>
+            <th class="text-end">Qty</th>
+            <th>Asset</th>
+            <th>Urgency</th>
+            {% if is_manager %}<th>Requester</th>{% endif %}
+            <th>Status</th>
+            <th>Updated</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in requests %}
+          <tr data-request-id="{{ r.id }}">
+            <td><a class="req-id" href="{{ url_for('status', request_id=r.id) }}">{{ r.id }}</a></td>
+            <td class="col-part"><div class="fw-medium">{{ r.part_name }}</div><div class="sub mono">{{ r.part_number }}</div></td>
+            <td class="text-end mono">{{ r.quantity }}</td>
+            <td class="mono">{{ r.asset_id }}</td>
+            <td>{{ urgency_tag(r.urgency) }}</td>
+            {% if is_manager %}<td class="text-nowrap">{{ r.requester }}</td>{% endif %}
+            <td>{{ status_badge(r.status) }}</td>
+            <td class="sub mono">{{ r.updated_at }}</td>
+            <td class="text-end text-nowrap">
+              {% if is_manager %}
+                <a href="{{ url_for('status', request_id=r.id) }}" class="btn btn-sm btn-outline-slate" title="Track" aria-label="Track {{ r.id }}"><i class="bi bi-clock-history"></i></a>
+                <a href="{{ url_for('review', request_id=r.id) }}" class="btn btn-sm {% if r.status in ('Pending','Validated') %}btn-navy{% else %}btn-outline-slate{% endif %}" title="Review" aria-label="Review {{ r.id }}"><i class="bi bi-clipboard-check"></i> Review</a>
+              {% else %}
+                <a href="{{ url_for('status', request_id=r.id) }}" class="btn btn-sm btn-outline-slate" aria-label="Track {{ r.id }}"><i class="bi bi-clock-history me-1"></i>Track</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty-state" id="empty-state">
+        <i class="bi bi-inbox"></i>
+        {% if filters.q or filters.status or filters.urgency %}No requests match the current filters.{% elif is_manager %}No spare parts requests have been raised yet.{% else %}You have not raised any requests yet. Use <strong>New Request</strong> to raise one.{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if not is_manager %}
+  {# Submit modal (posts to /submit), workers only #}
+  <div class="modal fade" id="submitModal" tabindex="-1" aria-labelledby="submitModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <form class="modal-content" method="post" action="{{ url_for('submit') }}" id="modal-submit-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="modal-header">
+          <h2 class="modal-title" id="submitModalLabel"><i class="bi bi-plus-square me-2"></i>Raise Spare Part Request</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          {{ request_form(form, errors, 'm_') }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-slate" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-accent"><i class="bi bi-send me-1"></i>Submit Request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {#                               SUBMIT                                #}
+  {# =================================================================== #}
+  {% elif view == 'submit' %}
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <form class="panel" method="post" action="{{ url_for('submit') }}" id="submit-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="panel-head"><span><i class="bi bi-pencil-square me-1"></i>Request Details</span></div>
+        <div class="panel-body">
+          {{ request_form(form, errors, '') }}
+        </div>
+        <div class="panel-body border-top d-flex justify-content-end gap-2">
+          <a href="{{ url_for('dashboard') }}" class="btn btn-outline-slate">Cancel</a>
+          <button type="submit" class="btn btn-accent" id="btn-submit"><i class="bi bi-send me-1"></i>Submit Request</button>
+        </div>
+      </form>
+    </div>
+    <div class="col-lg-4">
+      <div class="panel">
+        <div class="panel-head"><span><i class="bi bi-info-circle me-1"></i>Approval Workflow</span></div>
+        <div class="panel-body">
+          <ol class="ps-3 mb-0 small">
+            <li class="mb-2"><strong>Pending</strong> — request logged with your name and timestamp.</li>
+            <li class="mb-2"><strong>Validated</strong> — automated checks for field integrity, duplicate open requests on the same asset, and critical-urgency justification.</li>
+            <li class="mb-2"><strong>Approved / Rejected</strong> — maintenance manager decision with notes. Rejections always carry a reason.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# =================================================================== #}
+  {#                               REVIEW                                #}
+  {# =================================================================== #}
+  {% elif view == 'review' %}
+
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="panel mb-4">
+        <div class="panel-head">
+          <span><i class="bi bi-box-seam me-1"></i>Request Details</span>
+          {{ status_badge(req.status) }}
+        </div>
+        <div class="panel-body">
+          <dl class="row spec">
+            <div class="col-sm-8"><dt>Part Name</dt><dd>{{ req.part_name }}</dd></div>
+            <div class="col-sm-4"><dt>Part Number</dt><dd class="mono">{{ req.part_number }}</dd></div>
+            <div class="col-sm-4"><dt>Quantity</dt><dd class="mono">{{ req.quantity }}</dd></div>
+            <div class="col-sm-4"><dt>Asset ID</dt><dd class="mono">{{ req.asset_id }}</dd></div>
+            <div class="col-sm-4"><dt>Urgency</dt><dd>{{ urgency_tag(req.urgency) }}</dd></div>
+            <div class="col-sm-4"><dt>Requester</dt><dd>{{ req.requester }}</dd></div>
+            <div class="col-sm-4"><dt>Submitted</dt><dd class="mono small">{{ req.created_at }}</dd></div>
+            <div class="col-sm-4"><dt>Last Update</dt><dd class="mono small">{{ req.updated_at }}</dd></div>
+          </dl>
+          <dt class="form-label">Justification</dt>
+          <div class="justification">{{ req.justification }}</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span><i class="bi bi-shield-check me-1"></i>Validation Checks</span>
+          {% if req.validation %}<span class="sub" style="text-transform:none;letter-spacing:0;font-weight:400">{{ req.validation.checked_at }} · {{ req.validation.checked_by }}</span>{% endif %}
+        </div>
+        <div class="panel-body" id="validation-results">
+          {% if req.validation %}
+            {% for c in req.validation.checks %}
+              <div class="check-row">
+                <span class="chk chk-{{ c.result }}">{{ c.result }}</span>
+                <div><div class="fw-semibold">{{ c.name }}</div><div class="sub">{{ c.detail }}</div></div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="sub mb-0">Validation has not been run on this request yet.</p>
+          {% endif %}
+          {% if req.status == 'Pending' %}
+          <form method="post" action="{{ url_for('validate', request_id=req.id) }}" class="mt-3" id="validate-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-navy" id="btn-validate"><i class="bi bi-play-circle me-1"></i>{% if req.validation %}Re-run{% else %}Run{% endif %} Validation</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="panel">
+        <div class="panel-head"><span><i class="bi bi-person-badge me-1"></i>Manager Decision</span></div>
+        <div class="panel-body">
+          {% if req.status in ('Approved', 'Rejected') %}
+            <div class="mb-2">{{ status_badge(req.status) }}</div>
+            <dl class="spec">
+              <dt>Reviewer</dt><dd>{{ req.reviewer }}</dd>
+              <dt>Decided</dt><dd class="mono small">{{ req.decided_at }}</dd>
+              <dt>Notes</dt><dd>{{ req.reviewer_notes or '—' }}</dd>
+            </dl>
+            <p class="sub mb-0">This request is closed. Decisions are final and recorded in the timeline.</p>
+          {% else %}
+            {% if req.status == 'Pending' %}
+              <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-circle me-1"></i>Approval is locked until validation passes. You can still reject with a reason.</div>
+            {% endif %}
+            <div class="mb-3">
+              <span class="form-label d-block">Deciding As</span>
+              <div class="requester-lock" id="reviewer-display"><i class="bi bi-lock-fill me-1"></i>{{ current_user.name }} <span class="sub mono ms-1">@{{ current_user.username }}</span></div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="reviewer-notes">Reviewer Notes</label>
+              <textarea class="form-control" id="reviewer-notes" rows="4" maxlength="1000" placeholder="Required for rejection (min 10 characters)."></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-success flex-fill" data-decision="approve" {% if req.status != 'Validated' %}disabled{% endif %} id="btn-approve"><i class="bi bi-check2-circle me-1"></i>Approve</button>
+              <button type="button" class="btn btn-outline-danger flex-fill" data-decision="reject" id="btn-reject"><i class="bi bi-x-octagon me-1"></i>Reject</button>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if req.status not in ('Approved', 'Rejected') %}
+  {# Confirmation modal: copies reviewer inputs into a real POST form #}
+  <div class="modal fade" id="decisionModal" tabindex="-1" aria-labelledby="decisionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" method="post" id="decision-form"
+            data-approve-url="{{ url_for('approve', request_id=req.id) }}"
+            data-reject-url="{{ url_for('reject', request_id=req.id) }}">
+        <div class="modal-header">
+          <h2 class="modal-title" id="decisionModalLabel">Confirm Decision</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">You are about to <strong id="decision-verb">approve</strong> request <span class="mono fw-semibold">{{ req.id }}</span> ({{ req.part_name }}, qty {{ req.quantity }}).</p>
+          <p class="sub mb-0">This action is final and will be recorded against <strong>{{ current_user.name }}</strong>.</p>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="notes" id="decision-notes">
+          <div class="alert alert-danger py-2 small mt-3 d-none" id="decision-error"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-slate" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn" id="decision-confirm">Confirm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {#                               STATUS                                #}
+  {# =================================================================== #}
+  {% elif view == 'status' %}
+
+  {% set s = req.status %}
+  <div class="panel mb-4">
+    <div class="panel-body py-4">
+      <ol class="stepper" id="lifecycle">
+        <li class="done"><div class="dot"><i class="bi bi-check-lg"></i></div>Submitted</li>
+        <li class="{% if s == 'Pending' %}current{% elif s in ('Validated','Approved') %}done{% elif s == 'Rejected' and req.validation and req.validation.passed %}done{% endif %}">
+          <div class="dot">{% if s in ('Validated','Approved') or (s == 'Rejected' and req.validation and req.validation.passed) %}<i class="bi bi-check-lg"></i>{% else %}2{% endif %}</div>Validated</li>
+        <li class="{% if s == 'Validated' %}current{% elif s == 'Approved' %}done{% elif s == 'Rejected' %}rejected{% endif %}">
+          <div class="dot">{% if s == 'Approved' %}<i class="bi bi-check-lg"></i>{% elif s == 'Rejected' %}<i class="bi bi-x-lg"></i>{% else %}3{% endif %}</div>{% if s == 'Rejected' %}Rejected{% else %}Decision{% endif %}</li>
+        <li class="{% if s == 'Approved' %}done{% endif %}"><div class="dot">{% if s == 'Approved' %}<i class="bi bi-check-lg"></i>{% else %}4{% endif %}</div>Released to Stores</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <div class="panel">
+        <div class="panel-head"><span><i class="bi bi-box-seam me-1"></i>Summary</span>{{ status_badge(req.status) }}</div>
+        <div class="panel-body">
+          <dl class="spec">
+            <dt>Part</dt><dd>{{ req.part_name }} <span class="sub mono">· {{ req.part_number }}</span></dd>
+            <dt>Quantity / Asset</dt><dd class="mono">{{ req.quantity }} → {{ req.asset_id }}</dd>
+            <dt>Urgency</dt><dd>{{ urgency_tag(req.urgency) }}</dd>
+            <dt>Requester</dt><dd>{{ req.requester }}</dd>
+            {% if req.reviewer %}<dt>Reviewer</dt><dd>{{ req.reviewer }}</dd>{% endif %}
+            {% if req.reviewer_notes %}<dt>Reviewer Notes</dt><dd>{{ req.reviewer_notes }}</dd>{% endif %}
+          </dl>
+          <dt class="form-label">Justification</dt>
+          <div class="justification">{{ req.justification }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="panel">
+        <div class="panel-head"><span><i class="bi bi-clock-history me-1"></i>Lifecycle Timeline</span><span class="sub" style="text-transform:none;letter-spacing:0;font-weight:400">{{ req.timeline|length }} events</span></div>
+        <div class="panel-body">
+          <ul class="timeline" id="timeline">
+            {% for e in req.timeline|reverse %}
+            <li class="tl-{{ e.status }}">
+              <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div>{{ status_badge(e.status) }} <span class="ms-1 fw-medium">{{ e.actor }}</span></div>
+                <span class="tl-time">{{ e.timestamp }}</span>
+              </div>
+              <div class="mt-1">{{ e.note }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# =================================================================== #}
+  {#                                ERROR                                #}
+  {# =================================================================== #}
+  {% else %}
+  <div class="panel">
+    <div class="empty-state">
+      <i class="bi bi-exclamation-octagon"></i>
+      <div class="fs-5 fw-semibold text-dark mb-1">Error {{ error_code }}</div>
+      <p class="mb-3">{{ error_message }}</p>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-navy">Back to Dashboard</a>
+    </div>
+  </div>
+  {% endif %}
+
+</main>
+{% endif %}
+
+<footer class="sprs-foot">
+  <div class="container-xl d-flex justify-content-between flex-wrap gap-2">
+    <span>SPRS · Maintenance &amp; Stores Integration</span>
+    <span class="mono">Data store: local JSON</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function () {
+  // Normalise uppercase identifier fields as the user types.
+  document.querySelectorAll('input.text-uppercase').forEach(function (el) {
+    el.addEventListener('input', function () {
+      var pos = el.selectionStart;
+      el.value = el.value.toUpperCase();
+      el.setSelectionRange(pos, pos);
+    });
+  });
+
+  // Manager decision: copy inputs into confirmation modal, validate client-side.
+  var form = document.getElementById('decision-form');
+  if (form) {
+    var modal = new bootstrap.Modal(document.getElementById('decisionModal'));
+    var verb = document.getElementById('decision-verb');
+    var confirmBtn = document.getElementById('decision-confirm');
+    var errBox = document.getElementById('decision-error');
+    document.querySelectorAll('[data-decision]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var decision = btn.getAttribute('data-decision');
+        var notes = document.getElementById('reviewer-notes').value.trim();
+        var problem = '';
+        if (decision === 'reject' && notes.length < 10) problem = 'Rejection needs reviewer notes of at least 10 characters.';
+
+        form.action = form.getAttribute('data-' + decision + '-url');
+        document.getElementById('decision-notes').value = notes;
+        verb.textContent = decision;
+        confirmBtn.className = 'btn ' + (decision === 'approve' ? 'btn-success' : 'btn-danger');
+        confirmBtn.textContent = decision === 'approve' ? 'Confirm Approval' : 'Confirm Rejection';
+        if (problem) {
+          errBox.textContent = problem;
+          errBox.classList.remove('d-none');
+          confirmBtn.disabled = true;
+        } else {
+          errBox.classList.add('d-none');
+          confirmBtn.disabled = false;
+        }
+        modal.show();
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

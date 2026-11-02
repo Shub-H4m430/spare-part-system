@@ -1,0 +1,25 @@
+# Keep the Docker build context small and free of secrets and local data.
+.git
+.gitignore
+.venv
+venv
+env
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+
+# Local data and secrets must never be baked into an image
+**/data.json
+**/data.json.corrupt-*
+**/.data-*.tmp
+docker/.env
+.env
+
+# Not needed at runtime
+docs
+tests
+jenkins
+ansible
+ci-data
+docker/docker-compose.yml
+*.md

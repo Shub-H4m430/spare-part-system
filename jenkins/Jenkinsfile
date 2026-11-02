@@ -1,0 +1,163 @@
+// Spare Parts Request System - Jenkins declarative pipeline
+//
+// Job setup: create a "Pipeline" job, choose "Pipeline script from SCM",
+// point it at this repository, and set Script Path to: jenkins/Jenkinsfile
+//
+// Agent requirements (Linux):
+//   python3 (3.10+) with the venv module, Google Chrome, Git,
+//   Docker CLI with access to a Docker daemon, and the Docker Compose v2 plugin.
+//
+// One-time Jenkins credential:
+//   Manage Jenkins > Credentials > add a "Secret text" with ID "sprs-secret-key"
+//   holding a long random string. It signs session cookies of the deployed app.
+
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        VENV           = "${WORKSPACE}/.venv"
+        CI_DIR         = "${WORKSPACE}/ci-data"
+        IMAGE_NAME     = 'spare-parts-app'
+        IMAGE_TAG      = 'v1'
+        COMPOSE_FILE   = 'docker/docker-compose.yml'
+        CONTAINER_NAME = 'spare-parts-app'
+        // The test server uses its own port, because the Deploy stage of the
+        // previous build is still running the live container on port 5000.
+        TEST_PORT      = '5055'
+        TEST_BASE_URL  = 'http://127.0.0.1:5055'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log -1 --pretty=format:"Building commit %h by %an: %s"'
+            }
+        }
+
+        stage('Build / Setup') {
+            steps {
+                sh '''
+                    set -eu
+                    python3 --version
+                    rm -rf "$VENV"
+                    python3 -m venv "$VENV"
+                    "$VENV/bin/python" -m pip install --upgrade pip
+                    "$VENV/bin/python" -m pip install -r requirements.txt
+                    "$VENV/bin/python" -m pip check
+                '''
+            }
+        }
+
+        stage('Quality Gate (Selenium Tests)') {
+            steps {
+                sh '''
+                    set -eu
+                    rm -rf "$CI_DIR" tests/selenium/artifacts
+                    mkdir -p "$CI_DIR"
+
+                    echo "== Lint (Definition of Done)"
+                    "$VENV/bin/python" -m flake8 --max-line-length=120 src tests
+
+                    echo "== Starting SPRS on port $TEST_PORT with a throw-away data file"
+                    SPRS_HOST=127.0.0.1 \
+                    SPRS_PORT="$TEST_PORT" \
+                    SPRS_DATA_FILE="$CI_DIR/data.json" \
+                    SPRS_SECRET_KEY="ci-only-$BUILD_TAG" \
+                    SPRS_DEMO_MODE=0 \
+                    nohup "$VENV/bin/python" src/app.py > "$CI_DIR/app.log" 2>&1 &
+                    APP_PID=$!
+                    trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+
+                    healthy=no
+                    for attempt in $(seq 1 30); do
+                        if "$VENV/bin/python" -c "import json,sys,urllib.request; r=urllib.request.urlopen('$TEST_BASE_URL/health', timeout=2); sys.exit(0 if json.load(r).get('status') == 'ok' else 1)" 2>/dev/null; then
+                            healthy=yes
+                            break
+                        fi
+                        if ! kill -0 "$APP_PID" 2>/dev/null; then
+                            break
+                        fi
+                        sleep 1
+                    done
+                    if [ "$healthy" != yes ]; then
+                        echo "SPRS did not become healthy. Server log:"
+                        cat "$CI_DIR/app.log"
+                        exit 1
+                    fi
+                    echo "SPRS is healthy at $TEST_BASE_URL"
+
+                    echo "== Running Selenium UI tests"
+                    SPRS_BASE_URL="$TEST_BASE_URL" \
+                    "$VENV/bin/python" -m pytest tests/selenium/test_spare_parts_ui.py \
+                        -v -p no:cacheprovider \
+                        --junitxml="$CI_DIR/junit.xml"
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'ci-data/junit.xml'
+                    archiveArtifacts allowEmptyArchive: true,
+                                     artifacts: 'ci-data/app.log, tests/selenium/artifacts/**'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    set -eu
+                    docker build \
+                        -f docker/Dockerfile \
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \
+                        -t "$IMAGE_NAME:build-$BUILD_NUMBER" \
+                        .
+                    docker image ls "$IMAGE_NAME"
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                withCredentials([string(credentialsId: 'sprs-secret-key', variable: 'SPRS_SECRET_KEY')]) {
+                    sh '''
+                        set -eu
+                        docker compose -f "$COMPOSE_FILE" up -d --no-build --force-recreate
+
+                        echo "== Waiting for the container health check"
+                        status=starting
+                        for attempt in $(seq 1 30); do
+                            status=$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER_NAME")
+                            if [ "$status" = healthy ]; then
+                                break
+                            fi
+                            sleep 3
+                        done
+                        if [ "$status" != healthy ]; then
+                            echo "Container did not become healthy (last status: $status). Logs:"
+                            docker logs --tail 100 "$CONTAINER_NAME"
+                            exit 1
+                        fi
+                        docker compose -f "$COMPOSE_FILE" ps
+                        echo "Deployed $IMAGE_NAME:$IMAGE_TAG (build $BUILD_NUMBER) at http://localhost:5000"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline succeeded: ${IMAGE_NAME}:${IMAGE_TAG} is running on port 5000."
+        }
+        failure {
+            echo 'Pipeline failed. Check the failed stage log, ci-data/app.log and any Selenium screenshots in the build artifacts.'
+        }
+    }
+}
