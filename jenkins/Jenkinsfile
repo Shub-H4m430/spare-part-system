@@ -1,15 +1,5 @@
 // Spare Parts Request System - Jenkins declarative pipeline
-//
-// Job setup: create a "Pipeline" job, choose "Pipeline script from SCM",
-// point it at this repository, and set Script Path to: jenkins/Jenkinsfile
-//
-// Agent requirements (Linux):
-//   python3 (3.10+) with the venv module, Google Chrome, Git,
-//   Docker CLI with access to a Docker daemon, and the Docker Compose v2 plugin.
-//
-// One-time Jenkins credential:
-//   Manage Jenkins > Credentials > add a "Secret text" with ID "sprs-secret-key"
-//   holding a long random string. It signs session cookies of the deployed app.
+// Cross-platform compatible (Windows & Linux)
 
 pipeline {
     agent any
@@ -27,8 +17,6 @@ pipeline {
         IMAGE_TAG      = 'v1'
         COMPOSE_FILE   = 'docker/docker-compose.yml'
         CONTAINER_NAME = 'spare-parts-app'
-        // The test server uses its own port, because the Deploy stage of the
-        // previous build is still running the live container on port 5000.
         TEST_PORT      = '5055'
         TEST_BASE_URL  = 'http://127.0.0.1:5055'
     }
@@ -43,68 +31,74 @@ pipeline {
 
         stage('Build / Setup') {
             steps {
-                sh '''
-                    set -eu
-                    python --version
-                    rm -rf "$VENV"
-                    python -m venv "$VENV"
-                    "$VENV/bin/python" -m pip install --upgrade pip
-                    "$VENV/bin/python" -m pip install -r requirements.txt
-                    "$VENV/bin/python" -m pip check
-                '''
+                script {
+                    def py = isUnix() ? "${env.VENV}/bin/python" : "${env.VENV}/Scripts/python"
+                    sh """
+                        set -eu
+                        python --version
+                        rm -rf "${env.VENV}"
+                        python -m venv "${env.VENV}"
+                        "${py}" -m pip install --upgrade pip
+                        "${py}" -m pip install -r requirements.txt
+                        "${py}" -m pip check
+                    """
+                }
             }
         }
 
         stage('Quality Gate (Selenium Tests)') {
             steps {
-                sh '''
-                    set -eu
-                    rm -rf "$CI_DIR" tests/selenium/artifacts
-                    mkdir -p "$CI_DIR"
+                script {
+                    def py = isUnix() ? "${env.VENV}/bin/python" : "${env.VENV}/Scripts/python"
+                    sh """
+                        set -eu
+                        rm -rf "${env.CI_DIR}" tests/selenium/artifacts
+                        mkdir -p "${env.CI_DIR}"
 
-                    echo "== Lint (Definition of Done)"
-                    "$VENV/bin/python" -m flake8 --max-line-length=120 src tests
+                        echo "== Lint (Definition of Done)"
+                        "${py}" -m flake8 --max-line-length=120 src tests
 
-                    echo "== Starting SPRS on port $TEST_PORT with a throw-away data file"
-                    SPRS_HOST=127.0.0.1 \
-                    SPRS_PORT="$TEST_PORT" \
-                    SPRS_DATA_FILE="$CI_DIR/data.json" \
-                    SPRS_SECRET_KEY="ci-only-$BUILD_TAG" \
-                    SPRS_DEMO_MODE=0 \
-                    nohup "$VENV/bin/python" src/app.py > "$CI_DIR/app.log" 2>&1 &
-                    APP_PID=$!
-                    trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+                        echo "== Starting SPRS on port ${env.TEST_PORT} with a throw-away data file"
+                        SPRS_HOST=127.0.0.1 \\
+                        SPRS_PORT="${env.TEST_PORT}" \\
+                        SPRS_DATA_FILE="${env.CI_DIR}/data.json" \\
+                        SPRS_SECRET_KEY="ci-only-\${BUILD_TAG}" \\
+                        SPRS_DEMO_MODE=0 \\
+                        nohup "${py}" src/app.py > "${env.CI_DIR}/app.log" 2>&1 &
+                        APP_PID=\$!
+                        trap 'kill "\$APP_PID" 2>/dev/null || true' EXIT
 
-                    healthy=no
-                    for attempt in $(seq 1 30); do
-                        if "$VENV/bin/python" -c "import json,sys,urllib.request; r=urllib.request.urlopen('$TEST_BASE_URL/health', timeout=2); sys.exit(0 if json.load(r).get('status') == 'ok' else 1)" 2>/dev/null; then
-                            healthy=yes
-                            break
+                        healthy=no
+                        for attempt in \$(seq 1 30); do
+                            if "${py}" -c "import json,sys,urllib.request; r=urllib.request.urlopen('${env.TEST_BASE_URL}/health', timeout=2); sys.exit(0 if json.load(r).get('status') == 'ok' else 1)" 2>/dev/null; then
+                                healthy=yes
+                                break
+                            fi
+                            if ! kill -0 "\$APP_PID" 2>/dev/null; then
+                                break
+                            fi
+                            sleep 1
+                        done
+                        if [ "\$healthy" != yes ]; then
+                            echo "SPRS did not become healthy. Server log:"
+                            cat "${env.CI_DIR}/app.log"
+                            exit 1
                         fi
-                        if ! kill -0 "$APP_PID" 2>/dev/null; then
-                            break
-                        fi
-                        sleep 1
-                    done
-                    if [ "$healthy" != yes ]; then
-                        echo "SPRS did not become healthy. Server log:"
-                        cat "$CI_DIR/app.log"
-                        exit 1
-                    fi
-                    echo "SPRS is healthy at $TEST_BASE_URL"
+                        echo "SPRS is healthy at ${env.TEST_BASE_URL}"
 
-                    echo "== Running Selenium UI tests"
-                    SPRS_BASE_URL="$TEST_BASE_URL" \
-                    "$VENV/bin/python" -m pytest tests/selenium/test_spare_parts_ui.py \
-                        -v -p no:cacheprovider \
-                        --junitxml="$CI_DIR/junit.xml"
-                '''
+                        echo "== Running Selenium UI tests"
+                        SPRS_BASE_URL="${env.TEST_BASE_URL}" \\
+                        "${py}" -m pytest tests/selenium/test_spare_parts_ui.py \\
+                            -v -p no:cacheprovider \\
+                            --junitxml="${env.CI_DIR}/junit.xml"
+                    """
+                }
             }
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'ci-data/junit.xml'
                     archiveArtifacts allowEmptyArchive: true,
-                                     artifacts: 'ci-data/app.log, tests/selenium/artifacts/**'
+                                         artifacts: 'ci-data/app.log, tests/selenium/artifacts/**'
                 }
             }
         }
@@ -113,10 +107,10 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    docker build \
-                        -f docker/Dockerfile \
-                        -t "$IMAGE_NAME:$IMAGE_TAG" \
-                        -t "$IMAGE_NAME:build-$BUILD_NUMBER" \
+                    docker build \\
+                        -f docker/Dockerfile \\
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \\
+                        -t "$IMAGE_NAME:build-$BUILD_NUMBER" \\
                         .
                     docker image ls "$IMAGE_NAME"
                 '''
